@@ -43,6 +43,7 @@ def sauvegarder(data):
     CREATE TABLE IF NOT EXISTS mesures (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         station_id  TEXT,
+        station_name TEXT,
         latitude    REAL,
         longitude   REAL,
         indice_pollution      REAL,
@@ -55,7 +56,7 @@ def sauvegarder(data):
         now = datetime.now()
         cursor.execute(
         "INSERT INTO mesures (station_id, latitude, longitude, indice_pollution, horaire, date) VALUES (?, ?, ?, ?, ?, ?)",
-        (station.get("station_id"), station.get("latitude"), station.get("longitude"),
+        (station.get("station_id"),station.get("station_name"), station.get("latitude"), station.get("longitude"),
         station.get("pollution_index"), now.strftime("%H:%M:%S"), now.strftime("%Y-%m-%d"))
         )
     con.commit()
@@ -64,6 +65,6 @@ def sauvegarder(data):
 if __name__ == "__main__":
     url = "http://localhost:8001/indices"
     #url = url de la fast api
-    interval = 2
+    interval = 60
     x_min(url, interval)
         
