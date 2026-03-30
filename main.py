@@ -55,7 +55,7 @@ def sauvegarder(data):
     for station in data:
         now = datetime.now()
         cursor.execute(
-        "INSERT INTO mesures (station_id, latitude, longitude, indice_pollution, horaire, date) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO mesures (station_id, station_name, latitude, longitude, indice_pollution, horaire, date) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (station.get("station_id"),station.get("station_name"), station.get("latitude"), station.get("longitude"),
         station.get("pollution_index"), now.strftime("%H:%M:%S"), now.strftime("%Y-%m-%d"))
         )
