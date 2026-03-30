@@ -12,14 +12,11 @@ _KEY_TEMPLATE = (
     "/temps-reel/{year}/FR_E2_{date}.csv"
 )
 
-# URL de l'API tabulaire data.gouv.fr pour les métadonnées stations (GPS)
 _STATIONS_RESOURCE_ID = "eb87c56c-dea9-4377-a1e7-03ada59d3043"
 _TABULAR_API = "https://tabular-api.data.gouv.fr/api/resources/{resource_id}/data/"
 
-# Polluants cibles et leurs codes LCSQA
 POLLUANTS_CIBLES = {"NO2", "PM10", "PM2.5", "O3", "SO2", "CO"}
 
-# Colonnes réelles du CSV LCSQA (séparateur ';', valeurs entre guillemets)
 _COLS_BRUT = {
     "code site": "station_id",
     "nom site": "station_name",
@@ -31,15 +28,12 @@ _COLS_BRUT = {
 }
 
 
-# 1. Téléchargement CSV journalier
-
 def _fetch_csv(target_date: date) -> pd.DataFrame:
+    """Télécharge le fichier CSV brut LCSQA depuis MinIO pour la date donnée."""
     key = _KEY_TEMPLATE.format(year=target_date.year, date=target_date.isoformat())
     url = _MINIO_DOWNLOAD.format(key=key.replace("/", "%2F"))
     resp = requests.get(url, timeout=30)
     resp.raise_for_status()
-
-    # Séparateur ';', valeurs entre guillemets, encodage UTF-8 avec BOM
     df = pd.read_csv(
         StringIO(resp.content.decode("utf-8-sig")),
         sep=";",
@@ -49,42 +43,25 @@ def _fetch_csv(target_date: date) -> pd.DataFrame:
     return df
 
 
-
-# 2. Nettoyage
-
 def _clean(df: pd.DataFrame) -> pd.DataFrame:
-    # Garder uniquement les colonnes utiles et les renommer
+    """Filtre les mesures valides, sélectionne les polluants cibles et normalise les types."""
     cols_disponibles = {k: v for k, v in _COLS_BRUT.items() if k in df.columns}
     df = df[list(cols_disponibles.keys())].rename(columns=cols_disponibles)
-
-    # Garder uniquement les mesures valides (validite == "1" en string dans le CSV)
     df = df[df["validite"].astype(str).str.strip() == "1"].copy()
-
-    # Garder uniquement les polluants ciblés
     df = df[df["polluant"].isin(POLLUANTS_CIBLES)].copy()
-
-    # Convertir la date
     df["date_debut"] = pd.to_datetime(df["date_debut"], format="%Y/%m/%d %H:%M:%S", errors="coerce")
     df = df.dropna(subset=["date_debut"])
-
-    # Convertir la valeur en float, supprimer les NaN
     df["valeur"] = pd.to_numeric(df["valeur"].astype(str).str.replace(",", "."), errors="coerce")
     df = df.dropna(subset=["valeur"])
     df = df[df["valeur"] >= 0]
-
     return df.reset_index(drop=True)
 
 
-# 3. Métadonnées stations (GPS)
-
 def _fetch_stations_gps() -> pd.DataFrame:
-    """
-    Récupère les coordonnées GPS des stations via l'API tabulaire data.gouv.fr.
-    On garde uniquement les stations actives (OperationalActivityEnd vide).
-    """
+    """Récupère les coordonnées GPS de toutes les stations actives via l'API tabulaire data.gouv.fr."""
     rows = []
     page = 1
-    page_size = 100  # max accepté par l'API tabulaire data.gouv.fr
+    page_size = 100
 
     while True:
         url = _TABULAR_API.format(resource_id=_STATIONS_RESOURCE_ID)
@@ -97,40 +74,27 @@ def _fetch_stations_gps() -> pd.DataFrame:
             break
 
         for row in batch:
-            # station_id = partie après 'STA-' dans le champ Broader
             broader = row.get("Broader", "") or ""
             station_id = broader.split("/STA-")[-1] if "/STA-" in broader else None
-
-            end = row.get("OperationalActivityEnd", "")
-            if end:  # station fermée
+            if row.get("OperationalActivityEnd", ""):
                 continue
-
             lat = row.get("Latitude")
             lon = row.get("Longitude")
             if station_id and lat and lon:
-                rows.append({
-                    "station_id": station_id,
-                    "lat": float(lat),
-                    "lon": float(lon),
-                })
+                rows.append({"station_id": station_id, "lat": float(lat), "lon": float(lon)})
 
         if len(batch) < page_size:
             break
         page += 1
 
-    gps_df = pd.DataFrame(rows).drop_duplicates(subset=["station_id"])
-    return gps_df
+    return pd.DataFrame(rows).drop_duplicates(subset=["station_id"])
 
-
-# 4. Interface publique
 
 def get_pollution_data(target_date: date | None = None) -> pd.DataFrame:
-    """
-    Retourne un DataFrame propre des mesures de pollution pour une date donnée.
-    Colonnes résultantes :
-        station_id  | station_name | polluant | date_debut
-        valeur      | unite        | lat      | lon
-        
+    """Retourne les mesures de pollution valides avec coordonnées GPS pour la date donnée.
+
+    Colonnes retournées : station_id, station_name, polluant, date_debut, valeur, unite, lat, lon.
+    Par défaut, utilise la veille.
     """
     if target_date is None:
         target_date = date.today() - timedelta(days=1)
@@ -142,27 +106,14 @@ def get_pollution_data(target_date: date | None = None) -> pd.DataFrame:
     clean = _clean(raw)
     print(f"[pollution] {len(clean)} mesures valides après nettoyage.")
 
-    # Enrichissement GPS
     print("[pollution] Récupération des coordonnées GPS des stations...")
     gps = _fetch_stations_gps()
     print(f"[pollution] {len(gps)} stations actives trouvées.")
 
     merged = clean.merge(gps, on="station_id", how="left")
 
-    # Stations sans GPS : on les garde mais on log un warning
     sans_gps = merged["lat"].isna().sum()
     if sans_gps:
         print(f"[pollution] /!\\ {sans_gps} mesures sans coordonnees GPS (stations inconnues).")
 
-    return merged[[
-        "station_id", "station_name", "polluant",
-        "date_debut", "valeur", "unite", "lat", "lon"
-    ]]
-
-
-if __name__ == "__main__":
-    df = get_pollution_data()
-    print(df.head(10).to_string())
-    print(f"\nShape : {df.shape}")
-    print(f"Polluants présents : {df['polluant'].unique()}")
-    print(f"Stations avec GPS : {df['lat'].notna().sum()}/{len(df)}")
+    return merged[["station_id", "station_name", "polluant", "date_debut", "valeur", "unite", "lat", "lon"]]
