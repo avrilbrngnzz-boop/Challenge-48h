@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, Float, String
-from database import Base
+from data.database import Base
 
 class Mesure(Base):
     __tablename__ = "mesures"

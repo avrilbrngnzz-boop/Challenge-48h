@@ -4,15 +4,14 @@ import LeafletMap from '~/components/map/LeafletMap.vue'
 import type { MapDataItem } from '~/types/map-data'
 
 type ApiIndexItem = {
+  id?: number
   station_id: string
   station_name: string
   lat: number | null
   lon: number | null
   date: string | null
+  horaire?: string | null
   indice: number | null
-  indice_pollution?: number | null
-  modificateur_meteo?: number | null
-  synop_station_id?: string | null
 }
 
 type ForecastItem = {
@@ -33,7 +32,7 @@ type LocalFilters = {
   maxIndex: string
 }
 
-const API_BASE_URL = 'http://localhost:8000'
+const API_BASE_URL = ''
 
 const items = ref<MapDataItem[]>([])
 const forecastItems = ref<ForecastItem[]>([])
@@ -73,9 +72,7 @@ const mapApiIndexItem = (item: ApiIndexItem): MapDataItem | null => {
     details: {
       station_id: item.station_id,
       station_name: item.station_name ?? '—',
-      indice_pollution: item.indice_pollution ?? '—',
-      modificateur_meteo: item.modificateur_meteo ?? '—',
-      synop_station_id: item.synop_station_id ?? '—'
+      horaire: item.horaire ?? '—'
     }
   }
 }
@@ -85,9 +82,9 @@ const fetchIndexData = async () => {
   error.value = null
 
   try {
-    const response = await $fetch<ApiIndexItem[]>(`${API_BASE_URL}/index`, {
+    const response = await $fetch<ApiIndexItem[]>(`${API_BASE_URL}/api/stations`, {
       query: {
-        date: selectedDate.value
+        endDate: selectedDate.value
       }
     })
 
@@ -115,7 +112,7 @@ const fetchForecastData = async () => {
   forecastLoading.value = true
 
   try {
-    const response = await $fetch<ForecastItem[]>(`${API_BASE_URL}/forecast`, {
+    const response = await $fetch<ForecastItem[]>(`${API_BASE_URL}/api/forecast`, {
       query: {
         date: selectedDate.value,
         lookback: 7,
@@ -408,7 +405,7 @@ onMounted(async () => {
           </div>
           <div class="system-row">
             <span>Source</span>
-            <strong>FastAPI :8000</strong>
+            <strong>SQLite via /api</strong>
           </div>
           <div class="system-row">
             <span>Date chargée</span>
