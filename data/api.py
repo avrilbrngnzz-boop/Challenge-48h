@@ -2,10 +2,7 @@ from fastapi import FastAPI, Query, HTTPException
 from datetime import date, timedelta
 import pandas as pd
 
-from data.extract_pollution import get_pollution_data
-from data.extract_synop import get_meteo_data
-from data.spatial_join import join_pollution_synop
-from data.index_calculator import compute_index
+from data.pipeline import get_index_for_date
 from data.forecast import build_forecast
 
 app = FastAPI(
@@ -37,23 +34,6 @@ def _build_response(df: pd.DataFrame) -> list[dict]:
             "synop_station_id":   _nan_to_none(row.get("synop_station_id")),
         })
     return records
-
-
-def _get_index_for_date(target_date: date) -> pd.DataFrame:
-    pollution_df = get_pollution_data(target_date)
-    synop_df = get_meteo_data(target_date)
-
-    joined = join_pollution_synop(pollution_df, synop_df, max_distance_km=100.0)
-
-    synop_daily = (
-        synop_df.groupby("station_id")[["ff", "u"]]
-        .mean()
-        .reset_index()
-        .rename(columns={"station_id": "synop_station_id"})
-    )
-
-    merged = joined.merge(synop_daily, on="synop_station_id", how="left")
-    return compute_index(merged)
 
 
 @app.get("/index", summary="Indice combiné par station pour une date")
@@ -92,7 +72,7 @@ def get_index(
         raise HTTPException(status_code=400, detail="La date ne peut pas être dans le futur.")
 
     try:
-        df = _get_index_for_date(target_date)
+        df = get_index_for_date(target_date)
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Erreur récupération données : {e}")
 
@@ -164,7 +144,7 @@ def get_init(
     for delta in range(1, days + 1):
         target = today - timedelta(days=delta)
         try:
-            df = _get_index_for_date(target)
+            df = get_index_for_date(target)
             if not df.empty:
                 all_records.extend(_build_response(df))
         except Exception:

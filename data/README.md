@@ -2,10 +2,19 @@
 
 ## Démarrage rapide
 
+### En local (Python)
+
+```bash
+# Depuis la racine du repo
+pip install -r data/requirements.txt
+python3 -m uvicorn data.api:app --reload --port 8000
+```
+
 ### Avec Docker
 
 ```bash
-docker build -t data-service -f data/Dockerfile .
+# Depuis le dossier data/
+docker build -t data-service .
 docker run -p 8000:8000 data-service
 ```
 
