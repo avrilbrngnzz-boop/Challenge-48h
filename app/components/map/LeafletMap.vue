@@ -2,6 +2,9 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import 'leaflet.markercluster'
+import 'leaflet.markercluster/dist/MarkerCluster.css'
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import type { MapDataItem } from '~/types/map-data'
 
 const props = defineProps<{
@@ -9,8 +12,9 @@ const props = defineProps<{
 }>()
 
 const mapContainer = ref<HTMLElement | null>(null)
+
 let map: L.Map | null = null
-let circlesLayer: L.LayerGroup | null = null
+let markerClusterGroup: L.MarkerClusterGroup | null = null
 
 const getCircleColor = (value: number) => {
   if (value < 30) return '#22c55e'
@@ -18,57 +22,59 @@ const getCircleColor = (value: number) => {
   return '#ef4444'
 }
 
-const renderItems = () => {
-  if (!map || !circlesLayer) return
+const createPointMarker = (item: MapDataItem) => {
+  const color = getCircleColor(item.index)
 
-  circlesLayer.clearLayers()
+  const icon = L.divIcon({
+    className: 'custom-point-icon',
+    html: `
+      <div
+        class="point-badge"
+        style="
+          background:${color};
+          border:2px solid ${color};
+        "
+      >
+        ${item.index}
+      </div>
+    `,
+    iconSize: [44, 44],
+    iconAnchor: [22, 22]
+  })
+
+  const marker = L.marker([item.latitude, item.longitude], { icon })
+
+  const detailsHtml = item.details
+    ? Object.entries(item.details)
+        .map(([key, value]) => `<div><strong>${key} :</strong> ${String(value)}</div>`)
+        .join('')
+    : '<div>Aucun détail supplémentaire</div>'
+
+  marker.bindPopup(`
+    <div style="min-width:220px">
+      <div><strong>${item.name}</strong></div>
+      <div><strong>Indice :</strong> ${item.index}</div>
+      <div><strong>Zone :</strong> ${item.zone}</div>
+      <div><strong>Date :</strong> ${item.date}</div>
+      ${detailsHtml}
+    </div>
+  `)
+
+  return marker
+}
+
+const renderItems = () => {
+  if (!map || !markerClusterGroup) return
+
+  markerClusterGroup.clearLayers()
 
   if (!props.items.length) return
 
-  const bounds: L.LatLngExpression[] = []
+  const markers = props.items.map(createPointMarker)
+  markerClusterGroup.addLayers(markers)
 
-  props.items.forEach((item) => {
-    const latlng: L.LatLngExpression = [item.latitude, item.longitude]
-    bounds.push(latlng)
-
-    const circle = L.circleMarker(latlng, {
-      radius: 22,
-      color: getCircleColor(item.index),
-      fillColor: getCircleColor(item.index),
-      fillOpacity: 0.9,
-      weight: 2
-    })
-
-    const icon = L.divIcon({
-      className: 'custom-index-marker',
-      html: `<div class="index-marker-content">${item.index}</div>`,
-      iconSize: [44, 44],
-      iconAnchor: [22, 22]
-    })
-
-    const labelMarker = L.marker(latlng, { icon, interactive: false })
-
-    const detailsHtml = item.details
-      ? Object.entries(item.details)
-          .map(([key, value]) => `<div><strong>${key} :</strong> ${String(value)}</div>`)
-          .join('')
-      : '<div>Aucun détail supplémentaire</div>'
-
-    circle.bindPopup(`
-      <div style="min-width:220px">
-        <div><strong>${item.name}</strong></div>
-        <div><strong>Indice :</strong> ${item.index}</div>
-        <div><strong>Zone :</strong> ${item.zone}</div>
-        <div><strong>Date :</strong> ${item.date}</div>
-        ${detailsHtml}
-      </div>
-    `)
-
-    circlesLayer?.addLayer(circle)
-    circlesLayer?.addLayer(labelMarker)
-  })
-
-  if (bounds.length) {
+  const bounds = markerClusterGroup.getBounds()
+  if (bounds.isValid()) {
     map.fitBounds(bounds, { padding: [30, 30] })
   }
 }
@@ -87,13 +93,34 @@ onMounted(async () => {
     maxZoom: 19
   }).addTo(map)
 
-  circlesLayer = L.layerGroup().addTo(map)
+  markerClusterGroup = L.markerClusterGroup({
+    showCoverageOnHover: false,
+    spiderfyOnMaxZoom: true,
+    zoomToBoundsOnClick: true,
+    removeOutsideVisibleBounds: true,
+    maxClusterRadius: 50,
+    iconCreateFunction(cluster) {
+      const count = cluster.getChildCount()
+
+      return L.divIcon({
+        html: `
+          <div class="cluster-badge">
+            ${count}
+          </div>
+        `,
+        className: 'custom-cluster-icon',
+        iconSize: L.point(52, 52)
+      })
+    }
+  })
+
+  map.addLayer(markerClusterGroup)
 
   renderItems()
 
   setTimeout(() => {
     map?.invalidateSize()
-  }, 100)
+  }, 150)
 })
 
 watch(
@@ -105,9 +132,13 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  if (map && markerClusterGroup) {
+    map.removeLayer(markerClusterGroup)
+  }
+
+  markerClusterGroup = null
   map?.remove()
   map = null
-  circlesLayer = null
 })
 </script>
 
@@ -141,20 +172,41 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 
-.custom-index-marker {
+.custom-point-icon {
   background: transparent;
   border: none;
 }
 
-.index-marker-content {
+.point-badge {
   width: 44px;
   height: 44px;
+  border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
+  color: white;
   font-size: 12px;
   font-weight: 800;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2);
+}
+
+.custom-cluster-icon {
+  background: transparent;
+  border: none;
+}
+
+.cluster-badge {
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2563eb;
   color: white;
-  pointer-events: none;
+  font-size: 14px;
+  font-weight: 800;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+  border: 3px solid white;
 }
 </style>

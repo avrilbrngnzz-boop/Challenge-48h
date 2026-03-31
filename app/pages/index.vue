@@ -22,14 +22,14 @@ const filteredItems = computed(() => {
       item.zone.toLowerCase().includes(filters.search.toLowerCase())
 
     const matchesZone =
-      !filters.zone || item.zone.toLowerCase() === filters.zone.toLowerCase()
+      !filters.zone || item.zone.toLowerCase().includes(filters.zone.toLowerCase())
 
     const itemDate = new Date(item.date).getTime()
     const start = filters.startDate ? new Date(filters.startDate).getTime() : null
     const end = filters.endDate ? new Date(filters.endDate).getTime() : null
 
-    const matchesStart = !start || itemDate >= start
-    const matchesEnd = !end || itemDate <= end
+    const matchesStart = start === null || itemDate >= start
+    const matchesEnd = end === null || itemDate <= end
 
     const min = filters.minIndex !== '' ? Number(filters.minIndex) : null
     const max = filters.maxIndex !== '' ? Number(filters.maxIndex) : null
@@ -65,6 +65,32 @@ const averageIndex = computed(() => {
   return Math.round(total / filteredItems.value.length)
 })
 
+const indexDistribution = computed(() => {
+  return {
+    low: filteredItems.value.filter((item) => item.index < 30).length,
+    medium: filteredItems.value.filter((item) => item.index >= 30 && item.index < 70).length,
+    high: filteredItems.value.filter((item) => item.index >= 70).length
+  }
+})
+
+const timelineData = computed(() => {
+  const grouped: Record<string, number[]> = {}
+
+  filteredItems.value.forEach((item) => {
+    const day = item.date.slice(0, 10)
+
+    if (!grouped[day]) grouped[day] = []
+    grouped[day].push(item.index)
+  })
+
+  return Object.entries(grouped)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, values]) => ({
+      date,
+      average: Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
+    }))
+})
+
 const resetFilters = () => {
   filters.search = ''
   filters.zone = ''
@@ -91,7 +117,7 @@ const resetFilters = () => {
         <p class="stat-label">Points analysés</p>
         <div class="stat-row">
           <h2>{{ pointsCount }}</h2>
-          <span class="trend neutral">0%</span>
+          <span class="trend neutral">--</span>
         </div>
       </article>
 
@@ -99,7 +125,7 @@ const resetFilters = () => {
         <p class="stat-label">Zones surveillées</p>
         <div class="stat-row">
           <h2>{{ zonesCount }}</h2>
-          <span class="trend neutral">0</span>
+          <span class="trend neutral">--</span>
         </div>
       </article>
 
@@ -107,7 +133,7 @@ const resetFilters = () => {
         <p class="stat-label">Alertes actives</p>
         <div class="stat-row">
           <h2>{{ alertsCount }}</h2>
-          <span class="trend neutral">0</span>
+          <span class="trend neutral">--</span>
         </div>
       </article>
 
@@ -115,7 +141,7 @@ const resetFilters = () => {
         <p class="stat-label">Indice moyen</p>
         <div class="stat-row">
           <h2>{{ averageIndex }}</h2>
-          <span class="trend neutral">0%</span>
+          <span class="trend neutral">--</span>
         </div>
       </article>
     </section>
@@ -180,6 +206,10 @@ const resetFilters = () => {
           </div>
 
           <LeafletMap :items="filteredItems" />
+
+          <p v-if="filteredItems.length === 0" class="empty-map-message">
+            Aucune donnée disponible pour le moment.
+          </p>
         </section>
 
         <section class="grid-2">
@@ -188,8 +218,40 @@ const resetFilters = () => {
               <h3>Répartition des indices</h3>
               <span class="badge muted">Graphique</span>
             </div>
-            <div class="widget-placeholder small">
-              <p>Aucune donnée disponible.</p>
+
+            <div class="mini-chart">
+              <div class="bar-row">
+                <span class="bar-label">Faible</span>
+                <div class="bar-track">
+                  <div
+                    class="bar-fill green"
+                    :style="{ width: `${Math.max(indexDistribution.low * 40, indexDistribution.low ? 16 : 0)}px` }"
+                  />
+                </div>
+                <strong>{{ indexDistribution.low }}</strong>
+              </div>
+
+              <div class="bar-row">
+                <span class="bar-label">Moyen</span>
+                <div class="bar-track">
+                  <div
+                    class="bar-fill orange"
+                    :style="{ width: `${Math.max(indexDistribution.medium * 40, indexDistribution.medium ? 16 : 0)}px` }"
+                  />
+                </div>
+                <strong>{{ indexDistribution.medium }}</strong>
+              </div>
+
+              <div class="bar-row">
+                <span class="bar-label">Élevé</span>
+                <div class="bar-track">
+                  <div
+                    class="bar-fill red"
+                    :style="{ width: `${Math.max(indexDistribution.high * 40, indexDistribution.high ? 16 : 0)}px` }"
+                  />
+                </div>
+                <strong>{{ indexDistribution.high }}</strong>
+              </div>
             </div>
           </article>
 
@@ -198,7 +260,19 @@ const resetFilters = () => {
               <h3>Évolution temporelle</h3>
               <span class="badge muted">Timeline</span>
             </div>
-            <div class="widget-placeholder small">
+
+            <div v-if="timelineData.length" class="timeline-list">
+              <div
+                v-for="entry in timelineData"
+                :key="entry.date"
+                class="timeline-row"
+              >
+                <span>{{ entry.date }}</span>
+                <strong>{{ entry.average }}</strong>
+              </div>
+            </div>
+
+            <div v-else class="widget-placeholder small">
               <p>Aucune donnée disponible.</p>
             </div>
           </article>
@@ -207,23 +281,9 @@ const resetFilters = () => {
 
       <aside class="side-column">
         <section class="card side-widget">
-          <div class="panel-head">
-            <h3>État du système</h3>
-          </div>
-
-          <div class="system-list">
-            <div class="system-row">
-              <span>API données</span>
-              <strong>En attente</strong>
-            </div>
-            <div class="system-row">
-              <span>Synchronisation</span>
-              <strong>Non branchée</strong>
-            </div>
-            <div class="system-row">
-              <span>Dernière mise à jour</span>
-              <strong>--:--</strong>
-            </div>
+          <div class="system-row">
+            <span>Dernière mise à jour</span>
+            <strong>--:--</strong>
           </div>
         </section>
 
@@ -438,6 +498,13 @@ h1 {
   color: #475569;
 }
 
+.empty-map-message {
+  margin: 16px 0 0;
+  color: #64748b;
+  font-size: 14px;
+  text-align: center;
+}
+
 .grid-2 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -507,6 +574,64 @@ h1 {
 .btn-secondary {
   background: #e2e8f0;
   color: #1e293b;
+}
+
+.mini-chart {
+  display: grid;
+  gap: 16px;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 70px 1fr 30px;
+  align-items: center;
+  gap: 12px;
+}
+
+.bar-label {
+  font-size: 14px;
+  color: #334155;
+  font-weight: 600;
+}
+
+.bar-track {
+  height: 14px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.bar-fill.green {
+  background: #22c55e;
+}
+
+.bar-fill.orange {
+  background: #f59e0b;
+}
+
+.bar-fill.red {
+  background: #ef4444;
+}
+
+.timeline-list {
+  display: grid;
+  gap: 12px;
+}
+
+.timeline-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #334155;
 }
 
 @media (max-width: 1200px) {
