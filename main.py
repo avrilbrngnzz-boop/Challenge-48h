@@ -2,7 +2,7 @@ import requests
 import time
 import sys
 import sqlite3
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 def interroger_endpoint(url):
     """ """
@@ -53,14 +53,31 @@ def sauvegarder(data):
     """)
 
     for station in data:
-        now = datetime.now()
+        api_date = datetime.fromisoformat(station.get("date"))
         cursor.execute(
         "INSERT INTO mesures (station_id, station_name, lat, lon, indice, horaire, date) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (station.get("station_id"),station.get("station_name"), station.get("lat"), station.get("lon"),
-        station.get("indice"), now.strftime("%H:%M:%S"), now.strftime("%Y-%m-%d"))
-        )
+        (station.get("station_id"), station.get("station_name"), station.get("lat"), station.get("lon"),
+        station.get("indice"), api_date.strftime("%H:%M:%S"), api_date.strftime("%Y-%m-%d"))
+    )
     con.commit()
     con.close()
+
+def x_min_avec_date(interval_minutes):
+    interval_seconds = interval_minutes * 60
+    try:
+        while True:
+            print("nouvelle requête")
+            hier = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+            url = f"http://localhost:8000/index?date={hier}"
+            data = interroger_endpoint(url)
+            if data is not None:
+                sauvegarder(data)
+            else:
+                print("aucune donnée reçue")
+            time.sleep(interval_seconds)
+    except KeyboardInterrupt:
+        print("arrêt demandé")
+        sys.exit(0)
 
 if __name__ == "__main__":
     url_init = "http://localhost:8000/init?days=10"#10 au départ
@@ -74,5 +91,5 @@ if __name__ == "__main__":
     #url = url de la fast api
     url = "http://localhost:8000/index"
     interval = 60
-    x_min(url, interval)
-        
+    #x_min(url, interval)
+    x_min_avec_date(interval)
