@@ -1,9 +1,0 @@
-.git
-.gitignore
-.claude
-*.md
-*.xlsx
-*.pdf
-*.pptx
-**/__pycache__
-**/*.pyc
