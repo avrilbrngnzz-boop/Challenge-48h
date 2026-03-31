@@ -48,14 +48,15 @@ def sauvegarder(data):
         lon   REAL,
         indice      REAL,
         horaire     TEXT, 
-        date        TEXT 
+        date        TEXT, 
+        UNIQUE(station_id, date)
     )
     """)
 
     for station in data:
         api_date = datetime.fromisoformat(station.get("date"))
         cursor.execute(
-        "INSERT INTO mesures (station_id, station_name, lat, lon, indice, horaire, date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO mesures (station_id, station_name, lat, lon, indice, horaire, date) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (station.get("station_id"), station.get("station_name"), station.get("lat"), station.get("lon"),
         station.get("indice"), api_date.strftime("%H:%M:%S"), api_date.strftime("%Y-%m-%d"))
     )
@@ -79,16 +80,24 @@ def x_min_avec_date(interval_minutes):
         print("arrêt demandé")
         sys.exit(0)
 
-if __name__ == "__main__":
-    url_init = "http://localhost:8000/init?days=10"#10 au départ
-    print("initialisation de la base...")
-    data_init = interroger_endpoint(url_init)
-    if data_init is not None:
-        sauvegarder(data_init)
-        print("base initialisée")
+def db_est_vide():
+    con = sqlite3.connect("pollution.db")
+    cursor = con.cursor()
+    cursor.execute("SELECT COUNT(*) FROM mesures")
+    count = cursor.fetchone()[0]
+    con.close()
+    return count == 0
 
-    #url = "http://localhost:8001/indices" url fake_api
-    #url = url de la fast api
+if __name__ == "__main__":
+    if db_est_vide():
+        url_init = "http://localhost:8000/init?days=10"#10 au départ
+        print("initialisation de la base...")
+        data_init = interroger_endpoint(url_init)
+        if data_init is not None:
+            sauvegarder(data_init)
+            print("base initialisée")
+    else:
+        print("base déjà initialisé")
     url = "http://localhost:8000/index"
     interval = 60
     #x_min(url, interval)
