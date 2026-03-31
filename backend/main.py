@@ -1,8 +1,16 @@
 import requests 
 import time
 import sys
-import sqlite3
+import psycopg2
 from datetime import datetime, date, timedelta
+
+def get_connexion():
+    return psycopg2.connect(
+        host="adresse-infra",
+        database="pollution_db",
+        user="user",
+        password="password"
+    )
 
 def interroger_endpoint(url):
     """ """
@@ -37,11 +45,11 @@ def x_min(url, interval_minutes):
 
 def sauvegarder(data):
     """ """
-    con = sqlite3.connect("pollution2.db")
+    con = get_connexion()#nom de la db
     cursor = con.cursor()
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS mesures (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         station_id  TEXT,
         station_name TEXT,
         lat    REAL,
@@ -56,10 +64,10 @@ def sauvegarder(data):
     for station in data:
         api_date = datetime.fromisoformat(station.get("date"))
         cursor.execute(
-        "INSERT OR IGNORE INTO mesures (station_id, station_name, lat, lon, indice, horaire, date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO mesures (station_id, station_name, lat, lon, indice, horaire, date) VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (station_id, date) DO NOTHING",
         (station.get("station_id"), station.get("station_name"), station.get("lat"), station.get("lon"),
         station.get("indice"), api_date.strftime("%H:%M:%S"), api_date.strftime("%Y-%m-%d"))
-        )
+    )
     con.commit()
     con.close()
 
@@ -82,24 +90,26 @@ def x_min_avec_date(interval_minutes):
 
 def db_est_vide():
     try:
-        con = sqlite3.connect("pollution.db")
+        con = get_connexion()
         cursor = con.cursor()
         cursor.execute("SELECT COUNT(*) FROM mesures")
         count = cursor.fetchone()[0]
         con.close()
         return count == 0
-    except sqlite3.OperationalError:
+    except Exception:
         return True
 
 if __name__ == "__main__":
     if db_est_vide():
-        url_init = "http://localhost:8000/init?days=10"
+        url_init = "http://localhost:8000/init?days=10"#10 au départ
         print("initialisation de la base...")
         data_init = interroger_endpoint(url_init)
         if data_init is not None:
             sauvegarder(data_init)
             print("base initialisée")
     else:
-        print("base déjà initialisée")
+        print("base déjà initialisé")
+    url = "http://localhost:8000/index"
     interval = 60
+    #x_min(url, interval)
     x_min_avec_date(interval)
