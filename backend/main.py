@@ -37,7 +37,7 @@ def x_min(url, interval_minutes):
 
 def sauvegarder(data):
     """ """
-    con = sqlite3.connect("pollution.db")#nom de la db
+    con = sqlite3.connect("pollution2.db")
     cursor = con.cursor()
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS mesures (
@@ -59,7 +59,7 @@ def sauvegarder(data):
         "INSERT OR IGNORE INTO mesures (station_id, station_name, lat, lon, indice, horaire, date) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (station.get("station_id"), station.get("station_name"), station.get("lat"), station.get("lon"),
         station.get("indice"), api_date.strftime("%H:%M:%S"), api_date.strftime("%Y-%m-%d"))
-    )
+        )
     con.commit()
     con.close()
 
@@ -81,24 +81,25 @@ def x_min_avec_date(interval_minutes):
         sys.exit(0)
 
 def db_est_vide():
-    con = sqlite3.connect("pollution.db")
-    cursor = con.cursor()
-    cursor.execute("SELECT COUNT(*) FROM mesures")
-    count = cursor.fetchone()[0]
-    con.close()
-    return count == 0
+    try:
+        con = sqlite3.connect("pollution.db")
+        cursor = con.cursor()
+        cursor.execute("SELECT COUNT(*) FROM mesures")
+        count = cursor.fetchone()[0]
+        con.close()
+        return count == 0
+    except sqlite3.OperationalError:
+        return True
 
 if __name__ == "__main__":
     if db_est_vide():
-        url_init = "http://localhost:8000/init?days=10"#10 au départ
+        url_init = "http://localhost:8000/init?days=10"
         print("initialisation de la base...")
         data_init = interroger_endpoint(url_init)
         if data_init is not None:
             sauvegarder(data_init)
             print("base initialisée")
     else:
-        print("base déjà initialisé")
-    url = "http://localhost:8000/index"
+        print("base déjà initialisée")
     interval = 60
-    #x_min(url, interval)
     x_min_avec_date(interval)
