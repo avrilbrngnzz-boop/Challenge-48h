@@ -3,3 +3,4 @@ pandas==2.3.3
 numpy==2.4.0
 fastapi==0.135.2
 uvicorn==0.42.0
+sqlalchemy==2.0.40

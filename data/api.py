@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Query, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from datetime import date, timedelta
 import pandas as pd
 
@@ -9,6 +10,14 @@ app = FastAPI(
     title="Indice Pollution + Météo",
     description="API exposant l'indice combiné pollution atmosphérique et météo par station.",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
